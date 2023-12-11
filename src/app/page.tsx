@@ -71,7 +71,6 @@ export default function Home() {
       const gasPriceNum = await publicClient.getGasPrice()
       const gasPrice = Number(gasPriceNum.toString()) * 1.03;
       const results = accounts.map((account) => {
-        const gasPrice = Number(publicClient.getGasPrice()) * 1.03
         return client.sendTransaction({
           account,
           to: radio === "meToMe" ? account.address : toAddress,
