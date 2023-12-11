@@ -46,7 +46,7 @@ export default function Home() {
   const [inscription, setInscription] = useState<string>("");
   const [gas, setGas] = useState<number>(0);
   const [running, setRunning] = useState<boolean>(false);
-  const [delay, setDelay] = useState<number>(8000);
+  const [delay, setDelay] = useState<number>(1000);
   const [logs, setLogs] = useState<string[]>([]);
   const [successCount, setSuccessCount] = useState<number>(0);
   const [gasRadio, setGasRadio] = useState<GasRadio>("tip");
@@ -290,11 +290,11 @@ export default function Home() {
       </div>
 
       <div className=" flex flex-col gap-2">
-        <span>每笔交易间隔时间 (选填, 最低 8000 ms):</span>
+        <span>每笔交易间隔时间 (选填, 最低 1000 ms):</span>
         <TextField
           type="number"
           size="small"
-          placeholder="默认 8000 ms"
+          placeholder="默认 1000 ms"
           disabled={running}
           onChange={(e) => {
             const num = Number(e.target.value);
