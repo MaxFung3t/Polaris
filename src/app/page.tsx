@@ -19,6 +19,7 @@ import {
   SendTransactionErrorType,
   stringToHex,
   webSocket,
+  createPublicClient
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { mainnet } from "viem/chains";
@@ -27,6 +28,7 @@ import Log from "@/components/Log";
 import { ChainKey, inscriptionChains } from "@/config/chains";
 import useInterval from "@/hooks/useInterval";
 import { handleAddress, handleLog } from "@/utils/helper";
+import { resolve } from "path";
 
 const example =
   'data:,{"p":"asc-20","op":"mint","tick":"aval","amt":"100000000"}';
@@ -44,7 +46,7 @@ export default function Home() {
   const [inscription, setInscription] = useState<string>("");
   const [gas, setGas] = useState<number>(0);
   const [running, setRunning] = useState<boolean>(false);
-  const [delay, setDelay] = useState<number>(0);
+  const [delay, setDelay] = useState<number>(8000);
   const [logs, setLogs] = useState<string[]>([]);
   const [successCount, setSuccessCount] = useState<number>(0);
   const [gasRadio, setGasRadio] = useState<GasRadio>("tip");
@@ -59,45 +61,55 @@ export default function Home() {
   });
   const accounts = privateKeys.map((key) => privateKeyToAccount(key));
 
+  const publicClient = createPublicClient({
+    chain: mainnet,
+    transport: http()
+  })
+
   useInterval(
     async () => {
-      const results = await Promise.allSettled(
-        accounts.map((account) => {
-          return client.sendTransaction({
-            account,
-            to: radio === "meToMe" ? account.address : toAddress,
-            value: 0n,
-            data: stringToHex(inscription),
-            ...(gas > 0
-              ? gasRadio === "all"
-                ? {
-                    gasPrice: parseEther(gas.toString(), "gwei"),
-                  }
-                : {
-                    maxPriorityFeePerGas: parseEther(gas.toString(), "gwei"),
-                  }
-              : {}),
-          });
-        }),
-      );
-      results.forEach((result, index) => {
-        const address = handleAddress(accounts[index].address);
-        if (result.status === "fulfilled") {
-          pushLog(`${address} ${result.value}`, "success");
-          setSuccessCount((count) => count + 1);
-        }
-        if (result.status === "rejected") {
-          const e = result.reason as SendTransactionErrorType;
-          let msg = `${e.name as string}: `;
-          if (e.name === "TransactionExecutionError") {
-            msg = msg + e.details;
+      const gasPriceNum = await publicClient.getGasPrice()
+      const gasPrice = Number(gasPriceNum.toString()) * 1.03;
+      const results = accounts.map((account) => {
+        const gasPrice = Number(publicClient.getGasPrice()) * 1.03
+        return client.sendTransaction({
+          account,
+          to: radio === "meToMe" ? account.address : toAddress,
+          value: 0n,
+          data: stringToHex(inscription),
+          ...(gas > 0
+            ? gasRadio === "all"
+              ? {
+                gasPrice: parseEther(gas > 0 ? gas.toString() : gasPrice.toString(), "gwei"),
+              }
+              : {
+                maxPriorityFeePerGas: parseEther(gas > 0 ? gas.toString() : gasPrice.toString(), "gwei"),
+              }
+            : {}),
+        });
+      })
+
+      Promise.allSettled(results).then((results) => {
+        results.forEach((result, index) => {
+          const address = handleAddress(accounts[index].address);
+          const gasPrice = Number(publicClient.getGasPrice()) * 1.03
+          if (result.status === "fulfilled") {
+            pushLog(`${address} ${result.value}`, "success");
+            setSuccessCount((count) => count + 1);
           }
-          if (e.name == "Error") {
-            msg = msg + e.message;
+          if (result.status === "rejected") {
+            const e = result.reason as SendTransactionErrorType;
+            let msg = `${e.name as string}: `;
+            if (e.name === "TransactionExecutionError") {
+              msg = msg + e.details;
+            }
+            if (e.name == "Error") {
+              msg = msg + e.message;
+            }
+            setLogs((logs) => [handleLog(`当前：${gasPrice}-${address} ${msg}`, "error"), ...logs]);
           }
-          setLogs((logs) => [handleLog(`${address} ${msg}`, "error"), ...logs]);
-        }
-      });
+        });
+      })
     },
     running ? delay : null,
   );
@@ -268,9 +280,8 @@ export default function Home() {
         <TextField
           type="number"
           size="small"
-          placeholder={`${
-            gasRadio === "tip" ? "默认 0" : "默认最新"
-          }, 单位 gwei，例子: 10`}
+          placeholder={`${gasRadio === "tip" ? "不填默认链上gas" : "默认最新"
+            }, 单位 gwei，例子: 10`}
           disabled={running}
           onChange={(e) => {
             const num = Number(e.target.value);
@@ -280,11 +291,11 @@ export default function Home() {
       </div>
 
       <div className=" flex flex-col gap-2">
-        <span>每笔交易间隔时间 (选填, 最低 0 ms):</span>
+        <span>每笔交易间隔时间 (选填, 最低 8000 ms):</span>
         <TextField
           type="number"
           size="small"
-          placeholder="默认 0 ms"
+          placeholder="默认 8000 ms"
           disabled={running}
           onChange={(e) => {
             const num = Number(e.target.value);
